@@ -1,0 +1,74 @@
+#!/bin/bash
+# Параметры турнира
+N=100
+REWARD_CC=3
+REWARD_CD=0
+REWARD_DC=5
+REWARD_DD=1
+
+# Имена стратегий
+strategies=("AlwaysD" "AlwaysC" "Random" "TitForTat" "Adaptive")
+num=${#strategies[@]}
+
+# Функция имитирует матч двух стратегий
+simulate_match() {
+  s1=$1; s2=$2
+  score1=0; score2=0
+  # состояния для TitForTat (стратегия 4) и Adaptive (стратегия 5)
+  last1=""; last2=""
+  adapt1=0; adapt2=0  # количество предательств, влияющих на вероятность
+
+  for ((r=1; r<=N; r++)); do
+    # Стратегия 1
+    case $s1 in
+      0) move1="D" ;;                                      # Always betray
+      1) move1="C" ;;                                      # Always cooperate
+      2) (( RANDOM % 2 )) && move1="D" || move1="C" ;;      # Random
+      3) [[ $r -eq 1 ]] && move1="C" || move1="$last2" ;;   # TitForTat
+      4) # Adaptive: шанс предать = adapt*10%
+         rnum=$((RANDOM % 100))
+         (( rnum < adapt1 )) && move1="D" || move1="C" ;;
+    esac
+
+    # Стратегия 2
+    case $s2 in
+      0) move2="D" ;;
+      1) move2="C" ;;
+      2) (( RANDOM % 2 )) && move2="D" || move2="C" ;;
+      3) [[ $r -eq 1 ]] && move2="C" || move2="$last1" ;;
+      4) rnum=$((RANDOM % 100))
+         (( rnum < adapt2 )) && move2="D" || move2="C" ;;
+    esac
+
+    # Определение выплат по классической матрице PD
+    if [[ $move1 == "C" && $move2 == "C" ]]; then
+      (( score1 += REWARD_CC, score2 += REWARD_CC ))
+    elif [[ $move1 == "C" && $move2 == "D" ]]; then
+      (( score1 += REWARD_CD, score2 += REWARD_DC ))
+    elif [[ $move1 == "D" && $move2 == "C" ]]; then
+      (( score1 += REWARD_DC, score2 += REWARD_CD ))
+    else
+      (( score1 += REWARD_DD, score2 += REWARD_DD ))
+    fi
+
+    # Обновление состояний TitForTat
+    [[ $s1 -eq 3 ]] && last1=$move1
+    [[ $s2 -eq 3 ]] && last2=$move2
+    # Adaptive: если оппонент предал, шанс растёт на 10%
+    [[ $s1 -eq 4 && $move2 == "D" ]] && (( adapt1 += 10 ))
+    [[ $s2 -eq 4 && $move1 == "D" ]] && (( adapt2 += 10 ))
+  done
+  echo "$score1 $score2"
+}
+
+# Таблица результатов (матрица, строки - стратегия игрока, столбцы - противника)
+echo -n "Strategy"; for ((j=0; j<num; j++)); do echo -n "    ${strategies[j]}"; done; echo
+for ((i=0; i<num; i++)); do
+  echo -n "${strategies[i]}"
+  for ((j=0; j<num; j++)); do
+    read s1 s2 < <(simulate_match $i $j)
+    # Выводим результат для стратегии i против стратегии j
+    printf "    %4d" "$s1"
+  done
+  echo
+done
